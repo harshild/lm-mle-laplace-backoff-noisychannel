@@ -162,7 +162,7 @@ def main():
         if model_name == 'laplace':
             k = 1
             if hyper_parameters.keys().__contains__("k"):
-                k = int(hyper_parameters["k"])
+                k = float(hyper_parameters["k"])
 
             if N == 1:
                 model_data = unigram_laplace(sentence_list_train, k)
