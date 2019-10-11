@@ -112,8 +112,8 @@ def process_hyperparamters(params):
     return hyperparams
 
 
-def calculate_perplexity(N, model, conllu_data_tune):
-    sentence_list = parse_conllu_dataset(conllu_data_tune)
+def calculate_perplexity(N, model, conllu_data_dev):
+    sentence_list = parse_conllu_dataset(conllu_data_dev)
     tokens = findtokens(sentence_list)
     perplexity = 0
     if N == 1:
@@ -135,9 +135,64 @@ def calculate_perplexity(N, model, conllu_data_tune):
     return perplexity
 
 
+def unigram_backoff(sentence_list_train, sentence_list_tune, e1):
+    sum_cw_i, token_count = prepare_unigram_input(sentence_list_train)
+    types_tune = Counter(findtokens(sentence_list_tune))
+    p = {}
+    not_observed = []
+    p_sum = 0
+    for w_j, cw_j in types_tune.items():
+        if token_count[cw_j] == 0:
+            not_observed.append(cw_j)
+        else:
+            p[w_j] = (token_count[cw_j] - e1) / len(token_count)
+            p_sum = p_sum + p[w_j]
+
+    beta = (1 - p_sum) / len(not_observed)
+    for w_j in not_observed:
+        p[w_j] = beta
+
+    return p
+
+
+def bigram_backoff(sentence_list_train, sentence_list_tune, e1, e2):
+    pair_count, token_count = prepare_bigram_input(sentence_list_train)
+    sum_cw_i, token_count = prepare_unigram_input(sentence_list_train)
+    pair_types_tune = Counter(make_asymetric_pairs(sentence_list_tune))
+    p = {}
+    not_observed_n2 = []
+    not_observed_n1 = []
+    p_sum = 0
+
+    for pair, count in pair_types_tune.items():
+        if pair_count[pair] == 0:
+            if token_count[pair[1]] == 0:
+                not_observed_n1.append(pair)
+            else:
+                not_observed_n2.append(pair)
+        else:
+            p[pair] = (pair_count[pair] - e1) / token_count[pair[0]]
+            p_sum = p_sum + p[pair]
+
+    alpha = {}
+    for pair in not_observed_n2:
+        if not alpha.keys().__contains__(pair[0]):
+            alpha[pair[0]] = (1 - p_sum) / token_count[pair[1]]
+
+    for pair in not_observed_n2:
+        p[pair] = alpha[pair[0]] * (token_count[pair[1]]/sum_cw_i)
+        p_sum = p_sum + p[pair]
+
+    beta = (1 - p_sum) / len(not_observed_n1)
+
+    for pair in not_observed_n1:
+        p[pair] = beta
+
+    return p
+
+
 def main():
     mode = sys.argv[1]
-    conllu_data_tune = None
     language_model = None
     if mode == "train":
         hyper_parameters = None
@@ -168,16 +223,31 @@ def main():
                 model_data = unigram_laplace(sentence_list_train, k)
             if N == 2:
                 model_data = bigram_laplace(sentence_list_train, k)
+        if model_name == 'backoff':
+            e1 = 1
+            e2 = 1
+            if hyper_parameters.keys().__contains__("e1"):
+                e1 = float(hyper_parameters["e1"])
+            if hyper_parameters.keys().__contains__("e2"):
+                e2 = float(hyper_parameters["e2"])
+
+            sentence_list_tune = parse_conllu_dataset(conllu_data_tune)
+            if N == 1:
+                model_data = unigram_backoff(sentence_list_train, sentence_list_tune, e1)
+            if N == 2:
+                model_data = bigram_backoff(sentence_list_train, sentence_list_tune, e1, e2)
 
         language_model = LanguageModel(model_name, N, hyper_parameters, model_data)
         pickle.dump(language_model, open(save_file, "wb"))
-
+        print(language_model.model_name, language_model.N, language_model.hyper_parameters,
+              calculate_perplexity(language_model.N, language_model.model_data, conllu_data_tune)
+              )
     if mode == "eval":
         language_model = pickle.load(open(sys.argv[2], "rb"))
-        conllu_data_tune = sys.argv[3]
-    print(language_model.model_name, language_model.N, language_model.hyper_parameters,
-          calculate_perplexity(language_model.N, language_model.model_data, conllu_data_tune)
-          )
+        conllu_data_eval = sys.argv[3]
+        print(language_model.model_name, language_model.N, language_model.hyper_parameters,
+              calculate_perplexity(language_model.N, language_model.model_data, conllu_data_eval)
+              )
 
 
 if __name__ == '__main__':
