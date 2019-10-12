@@ -1,4 +1,5 @@
 import operator
+import sys
 
 import numpy
 
@@ -7,11 +8,12 @@ from language_models import unigram_mle, unigram_laplace
 
 
 def main():
-    language_datasets_path = {
-        "English": "/home/harshild/Documents/NLP/ud-treebanks-v2.2/UD_English-EWT/en_ewt-ud-train.conllu",
-        "German": "/home/harshild/Documents/NLP/ud-treebanks-v2.2/UD_German-GSD/de_gsd-ud-train.conllu",
-    }
-    sentence = "Ich".split(" ")
+    sentence = sys.argv[1].split(" ")
+    language_datasets_path = {}
+
+    for param in sys.argv[2].split(" "):
+        param_split = param.split("=")
+        language_datasets_path[param_split[0]] = param_split[1]
 
     sentence_count = {}
     sum_sentence_count = 0
@@ -26,6 +28,7 @@ def main():
         lm = unigram_laplace(lang_sentence_list, k=1)
 
         log_p_sentence = 0
+        # todo implement UNK or OOV
         for w in sentence:
             if lm.keys().__contains__(w):
                 log_p_sentence = log_p_sentence + numpy.log(lm[w])
@@ -36,7 +39,8 @@ def main():
 
         ll_p_sentence_l[lang_name] = log_p_sentence + numpy.log(p_l)
 
-    print(max(ll_p_sentence_l.items(), key=operator.itemgetter(1))[0])
+    print(ll_p_sentence_l)
+    print('Language Name , \u00EE" = ', max(ll_p_sentence_l.items(), key=operator.itemgetter(1)))
 
 
 if __name__ == '__main__':

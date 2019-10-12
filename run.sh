@@ -10,3 +10,8 @@ bash ngram_lm_train.bash backoff 1 /home/harshild/Documents/NLP/UD_English-EWT/e
 bash ngram_lm_eval.bash ./laplace-2-4.pkl /home/harshild/Documents/NLP/UD_English-EWT/en_ewt-ud-test.conllu
 
 bash ngram_lm_eval.bash ./backoff-1-1.pkl /home/harshild/Documents/NLP/UD_English-EWT/en_ewt-ud-dev.conllu
+
+
+bash unigram_lan_id.bash "Ich" "English=/home/harshild/Documents/NLP/ud-treebanks-v2.2/UD_English-EWT/en_ewt-ud-train.conllu" "German=/home/harshild/Documents/NLP/ud-treebanks-v2.2/UD_German-GSD/de_gsd-ud-train.conllu"
+bash unigram_lan_id.bash "Best" "English=/home/harshild/Documents/NLP/ud-treebanks-v2.2/UD_English-EWT/en_ewt-ud-train.conllu" "German=/home/harshild/Documents/NLP/ud-treebanks-v2.2/UD_German-GSD/de_gsd-ud-train.conllu"
+bash unigram_lan_id.bash "blind" "English=/home/harshild/Documents/NLP/ud-treebanks-v2.2/UD_English-EWT/en_ewt-ud-train.conllu" "German=/home/harshild/Documents/NLP/ud-treebanks-v2.2/UD_German-GSD/de_gsd-ud-train.conllu"
