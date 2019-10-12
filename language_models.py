@@ -5,6 +5,8 @@ import numpy
 from dataset_parser import parse_conllu_dataset, findtokens, make_asymetric_pairs
 
 
+# todo apply format t=for 10 decimal precision
+
 class LanguageModel:
     def __init__(self, model_name, N, hyper_parameters, model_data):
         self.model_name = model_name
@@ -61,47 +63,47 @@ def prepare_bigram_input(sentence_list):
 def prepare_unigram_input(sentence_list):
     tokens = findtokens(sentence_list)
     sum_cw_i = len(tokens)
-    token_count = Counter(tokens)
-    return sum_cw_i, token_count
+    type_count = Counter(tokens)
+    return sum_cw_i, type_count
 
 
 def unigram_mle(sentence_list):
     # p(w_j)=c(w_j) / ∑i=1=>n c(w_i)
-    sum_cw_i, token_count = prepare_unigram_input(sentence_list)
+    sum_cw_i, type_count = prepare_unigram_input(sentence_list)
     p = {}
-    for w_j, cw_j in token_count.items():
+    for w_j, cw_j in type_count.items():
         p[w_j] = cw_j / sum_cw_i
     return p
 
 
 def bigram_mle(sentence_list):
     # p(w_k|w_i)=c(w_i,w_k) / c(w_i)
-    pair_count, token_count = prepare_bigram_input(sentence_list)
+    pair_count, type_count = prepare_bigram_input(sentence_list)
     p = {}
     for (w_i, w_k), c_wi_wk in pair_count.items():
         # this is probability p(w_k|w_i)
         i = w_k + "|" + w_i
-        p[i] = c_wi_wk / token_count[w_i]
+        p[i] = c_wi_wk / type_count[w_i]
     return p
 
 
 def unigram_laplace(sentence_list, k):
     # p(w_j)=c(w_j) + k / ∑i=1=>n c(w_i) + k*V
-    sum_cw_i, token_count = prepare_unigram_input(sentence_list)
+    sum_cw_i, type_count = prepare_unigram_input(sentence_list)
     p = {}
-    for w_j, cw_j in token_count.items():
-        p[w_j] = (cw_j + k) / (sum_cw_i + (k * len(token_count)))
+    for w_j, cw_j in type_count.items():
+        p[w_j] = (cw_j + k) / (sum_cw_i + (k * len(type_count)))
     return p
 
 
 def bigram_laplace(sentence_list, k):
     # p(w_k|w_i)=c(w_i,w_k) + k / c(w_i) + k*V*V
-    pair_count, token_count = prepare_bigram_input(sentence_list)
+    pair_count, type_count = prepare_bigram_input(sentence_list)
     p = {}
     for (w_i, w_k), c_wi_wk in pair_count.items():
         # this is probability p(w_k|w_i)
         i = w_k + "|" + w_i
-        p[i] = (c_wi_wk + 1) / (token_count[w_i] + (k * (len(token_count) ^ 2)))
+        p[i] = (c_wi_wk + 1) / (type_count[w_i] + (k * (len(type_count) ^ 2)))
     return p
 
 
@@ -128,72 +130,70 @@ def calculate_perplexity(N, model, conllu_data_dev):
         unique_pairs = Counter(pairs)
         sum_p = 0
         for w in unique_pairs:
-            if model.keys().__contains__(w[0] + "|" + w[1]):
-                sum_p = sum_p + (unique_pairs[w] * (numpy.log(model[w[0] + "|" + w[1]])))
+            if model.keys().__contains__(w[1] + "|" + w[0]):
+                sum_p = sum_p + (unique_pairs[w] * (numpy.log(model[w[1] + "|" + w[0]])))
         perplexity = numpy.exp(-(sum_p / len(pairs)))
 
     return perplexity
 
 
-def unigram_backoff(sentence_list_train, sentence_list_tune, e1):
-    sum_cw_i, token_count = prepare_unigram_input(sentence_list_train)
-    types_tune = Counter(findtokens(sentence_list_tune))
+def unigram_backoff(sentence_list_train, sentence_list_tune, delta1, eta1):
+    sum_cw_i, type_count = prepare_unigram_input(sentence_list_train)
+    tune_sum_cw_i, tune_type_count = prepare_unigram_input(sentence_list_tune)
+
+    pb_sum = 0
     p = {}
     not_observed = []
-    p_sum = 0
-    for w_j, cw_j in types_tune.items():
-        if token_count[cw_j] == 0:
-            not_observed.append(cw_j)
+    for y, _ in tune_type_count.items():
+        if type_count[y] > eta1:
+            p[y] = (type_count[y] - delta1) / sum_cw_i
+            pb_sum = pb_sum + p[y]
         else:
-            p[w_j] = (token_count[cw_j] - e1) / len(token_count)
-            p_sum = p_sum + p[w_j]
+            not_observed.append(y)
 
-    beta = (1 - p_sum) / len(not_observed)
-    for w_j in not_observed:
-        p[w_j] = beta
+    constant_backoff = (1 - pb_sum)
+
+    for y in not_observed:
+        p[y] = constant_backoff / len(not_observed)
+        pb_sum = pb_sum + p[y]
 
     return p
 
 
-def bigram_backoff(sentence_list_train, sentence_list_tune, e1, e2):
-    pair_count, token_count = prepare_bigram_input(sentence_list_train)
-    sum_cw_i, token_count = prepare_unigram_input(sentence_list_train)
-    pair_types_tune = Counter(make_asymetric_pairs(sentence_list_tune))
+def bigram_backoff(sentence_list_train, sentence_list_tune, delta1, delta2, eta1=0, eta2=0):
+    pair_count, type_count = prepare_bigram_input(sentence_list_train)
+    pair_count_tune, type_count_tune = prepare_bigram_input(sentence_list_tune)
+
+    q = unigram_backoff(sentence_list_train, sentence_list_tune, delta1, eta1)
     p = {}
-    not_observed_n2 = []
-    not_observed_n1 = []
-    p_sum = 0
 
-    for pair, count in pair_types_tune.items():
-        if pair_count[pair] == 0:
-            if token_count[pair[1]] == 0:
-                not_observed_n1.append(pair)
+    for x, _ in type_count_tune.items():
+        pb_sum = 0
+        pb_sum_not_observed = 0
+        not_observed = []
+        d = dict(filter(lambda elem: elem[0][0] == x, pair_count_tune.items()))
+        for pair, count in d.items():
+            if pair_count[pair] > eta2:
+                p[pair[1] + "|" + pair[0]] = (pair_count[pair] - delta2) / type_count[pair[0]]
+                pb_sum = pb_sum + p[pair[1] + "|" + pair[0]]
             else:
-                not_observed_n2.append(pair)
-        else:
-            p[pair] = (pair_count[pair] - e1) / token_count[pair[0]]
-            p_sum = p_sum + p[pair]
+                p[pair[1] + "|" + pair[0]] = q[pair[1]]
+                pb_sum_not_observed = pb_sum_not_observed + p[pair[1] + "|" + pair[0]]
+                not_observed.append(pair)
 
-    alpha = {}
-    for pair in not_observed_n2:
-        if not alpha.keys().__contains__(pair[0]):
-            alpha[pair[0]] = (1 - p_sum) / token_count[pair[1]]
+        alpha = 0
+        if len(not_observed) > 0:
+            alpha = (1 - pb_sum) / pb_sum_not_observed
 
-    for pair in not_observed_n2:
-        p[pair] = alpha[pair[0]] * (token_count[pair[1]]/sum_cw_i)
-        p_sum = p_sum + p[pair]
-
-    beta = (1 - p_sum) / len(not_observed_n1)
-
-    for pair in not_observed_n1:
-        p[pair] = beta
+            for pair in not_observed:
+                p[pair[1] + "|" + pair[0]] = alpha * q[pair[1]]
+                pb_sum = pb_sum + p[pair[1] + "|" + pair[0]]
 
     return p
 
 
 def main():
     mode = sys.argv[1]
-    language_model = None
     if mode == "train":
         hyper_parameters = None
         model_name = sys.argv[2]
@@ -224,18 +224,23 @@ def main():
             if N == 2:
                 model_data = bigram_laplace(sentence_list_train, k)
         if model_name == 'backoff':
-            e1 = 1
-            e2 = 1
-            if hyper_parameters.keys().__contains__("e1"):
-                e1 = float(hyper_parameters["e1"])
-            if hyper_parameters.keys().__contains__("e2"):
-                e2 = float(hyper_parameters["e2"])
-
+            eta1 = 1
+            eta2 = 1
+            delta1 = 1
+            delta2 = 1
+            if hyper_parameters.keys().__contains__("eta1"):
+                eta1 = float(hyper_parameters["eta1"])
+            if hyper_parameters.keys().__contains__("eta2"):
+                eta2 = float(hyper_parameters["eta2"])
+            if hyper_parameters.keys().__contains__("delta1"):
+                delta1 = float(hyper_parameters["delta1"])
+            if hyper_parameters.keys().__contains__("delta2"):
+                delta2 = float(hyper_parameters["delta2"])
             sentence_list_tune = parse_conllu_dataset(conllu_data_tune)
             if N == 1:
-                model_data = unigram_backoff(sentence_list_train, sentence_list_tune, e1)
+                model_data = unigram_backoff(sentence_list_train, sentence_list_tune, delta1, eta1)
             if N == 2:
-                model_data = bigram_backoff(sentence_list_train, sentence_list_tune, e1, e2)
+                model_data = bigram_backoff(sentence_list_train, sentence_list_tune, delta1, delta2, eta1, eta2)
 
         language_model = LanguageModel(model_name, N, hyper_parameters, model_data)
         pickle.dump(language_model, open(save_file, "wb"))
