@@ -5,4 +5,4 @@ tune_conullu=$4
 save_model=$5
 hp_args="${*:6}"
 
-python3 ./language_models.py train "$model_name" "$N" "$train_conullu" "$tune_conullu" "$save_model" "$hp_args"
+./venv/bin/python3 ./language_models.py train "$model_name" "$N" "$train_conullu" "$tune_conullu" "$save_model" "$hp_args"

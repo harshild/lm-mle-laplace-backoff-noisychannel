@@ -25,7 +25,7 @@ def main():
     ll_p_sentence_l = {}
     for lang_name, language_dataset_path in language_datasets_path.items():
         lang_sentence_list = parse_conllu_dataset(language_dataset_path)
-        lm = unigram_laplace(lang_sentence_list, k=1)
+        lm = unigram_laplace(lang_sentence_list, l=1)
 
         log_p_sentence = 0
         # todo implement UNK or OOV
