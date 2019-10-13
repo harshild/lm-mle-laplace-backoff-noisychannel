@@ -105,23 +105,23 @@ def bigram_mle(sentence_list):
     return p
 
 
-def unigram_laplace(sentence_list, l):
+def unigram_laplace(sentence_list, gamma):
     # p(w_j)=c(w_j) + k / ∑i=1=>n c(w_i) + k*V
     sum_cw_i, type_count = prepare_unigram_input(sentence_list, 1)
     p = {}
     for w_j, cw_j in type_count.items():
-        p[w_j] = validate_probability((cw_j + l) / (sum_cw_i + (l * len(type_count))))
+        p[w_j] = validate_probability((cw_j + gamma) / (sum_cw_i + (gamma * len(type_count))))
     return p
 
 
-def bigram_laplace(sentence_list, l):
+def bigram_laplace(sentence_list, gamma):
     # p(w_k|w_i)=c(w_i,w_k) + k / c(w_i) + k*V*V
     pair_count, _, type_count, _ = prepare_bigram_input(sentence_list, 1)
     p = {}
     for (w_i, w_k), c_wi_wk in pair_count.items():
         # this is probability p(w_k|w_i)
         i = w_k + "|" + w_i
-        p[i] = validate_probability((c_wi_wk + 1) / (type_count[w_i] + (l * (len(type_count) ^ 2))))
+        p[i] = validate_probability((c_wi_wk + 1) / (type_count[w_i] + (gamma * (len(type_count) ^ 2))))
     return p
 
 
@@ -168,7 +168,7 @@ def calculate_perplexity(N, train_model, conllu_data_dev):
     return perplexity
 
 
-def unigram_backoff(sentence_list_train, sentence_list_tune, delta1, eta1):
+def unigram_backoff(sentence_list_train, sentence_list_tune, delta1, epsilon1):
     sum_cw_i, type_count = prepare_unigram_input(sentence_list_train, 1)
     tune_sum_cw_i, tune_type_count = prepare_unigram_input(sentence_list_tune, 1)
 
@@ -176,7 +176,7 @@ def unigram_backoff(sentence_list_train, sentence_list_tune, delta1, eta1):
     p = {}
     not_observed = []
     for y, _ in tune_type_count.items():
-        if type_count[y] > eta1:
+        if type_count[y] > epsilon1:
             p[y] = validate_probability((type_count[y] - delta1) / sum_cw_i)
             pb_sum = pb_sum + p[y]
         else:
@@ -191,11 +191,11 @@ def unigram_backoff(sentence_list_train, sentence_list_tune, delta1, eta1):
     return p
 
 
-def bigram_backoff(sentence_list_train, sentence_list_tune, delta1, delta2, eta1=0, eta2=0):
-    pair_count, _, type_count,_ = prepare_bigram_input(sentence_list_train, 1)
+def bigram_backoff(sentence_list_train, sentence_list_tune, delta1, delta2, epsilon1=0, epsilon2=0):
+    pair_count, _, type_count, _ = prepare_bigram_input(sentence_list_train, 1)
     pair_count_tune, _, type_count_tune, _ = prepare_bigram_input(sentence_list_tune, 1)
 
-    q = unigram_backoff(sentence_list_train, sentence_list_tune, delta1, eta1)
+    q = unigram_backoff(sentence_list_train, sentence_list_tune, delta1, epsilon1)
     p = {}
 
     for x, _ in type_count_tune.items():
@@ -204,7 +204,7 @@ def bigram_backoff(sentence_list_train, sentence_list_tune, delta1, delta2, eta1
         not_observed = []
         d = dict(filter(lambda elem: elem[0][0] == x, pair_count_tune.items()))
         for pair, count in d.items():
-            if pair_count[pair] > eta2:
+            if pair_count[pair] > epsilon2:
                 p[pair[1] + "|" + pair[0]] = validate_probability((pair_count[pair] - delta2) / type_count[pair[0]])
                 pb_sum = pb_sum + p[pair[1] + "|" + pair[0]]
             else:
@@ -248,32 +248,36 @@ def main():
                 model_data = bigram_mle(sentence_list_train)
 
         if model_name == 'laplace':
-            l = 1
-            if hyper_parameters is not None and hyper_parameters.keys().__contains__("l"):
-                l = float(hyper_parameters["l"])
+            gamma = 1
+            if hyper_parameters is not None and hyper_parameters.keys().__contains__("gamma"):
+                gamma = float(hyper_parameters["gamma"])
 
             if N == 1:
-                model_data = unigram_laplace(sentence_list_train, l)
+                model_data = unigram_laplace(sentence_list_train, gamma)
             if N == 2:
-                model_data = bigram_laplace(sentence_list_train, l)
+                model_data = bigram_laplace(sentence_list_train, gamma)
         if model_name == 'backoff':
-            eta1 = 1
-            eta2 = 1
+            epsilon1 = 1
+            epsilon2 = 1
             delta1 = 0.1
             delta2 = 0.1
-            if hyper_parameters is not None and hyper_parameters.keys().__contains__("eta1"):
-                eta1 = float(hyper_parameters["eta1"])
-            if hyper_parameters is not None and hyper_parameters.keys().__contains__("eta2"):
-                eta2 = float(hyper_parameters["eta2"])
+            if hyper_parameters is not None and hyper_parameters.keys().__contains__("epsilon1"):
+                epsilon1 = float(hyper_parameters["epsilon1"])
+            if hyper_parameters is not None and hyper_parameters.keys().__contains__("epsilon2"):
+                epsilon2 = float(hyper_parameters["epsilon2"])
             if hyper_parameters is not None and hyper_parameters.keys().__contains__("delta1"):
                 delta1 = float(hyper_parameters["delta1"])
             if hyper_parameters is not None and hyper_parameters.keys().__contains__("delta2"):
                 delta2 = float(hyper_parameters["delta2"])
+
+            if epsilon1 <= delta1 or epsilon2 <= delta2:
+                print("Epsilon and Delta constraint violation")
+                exit(-1)
             sentence_list_tune = parse_conllu_dataset(conllu_data_tune)
             if N == 1:
-                model_data = unigram_backoff(sentence_list_train, sentence_list_tune, delta1, eta1)
+                model_data = unigram_backoff(sentence_list_train, sentence_list_tune, delta1, epsilon1)
             if N == 2:
-                model_data = bigram_backoff(sentence_list_train, sentence_list_tune, delta1, delta2, eta1, eta2)
+                model_data = bigram_backoff(sentence_list_train, sentence_list_tune, delta1, delta2, epsilon1, epsilon2)
 
         language_model = LanguageModel(model_name, N, hyper_parameters, model_data)
         pickle.dump(language_model, open(save_file, "wb"))
