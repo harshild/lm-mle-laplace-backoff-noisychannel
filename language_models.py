@@ -152,13 +152,13 @@ def calculate_perplexity(N, train_model, conllu_data_dev):
     M = 0
     if N == 1:
         dev_token_len, dev_type_count = prepare_unigram_input(dev_dataset, 0)
-        M = len(dev_type_count)
+        M = dev_token_len
         for w, count in dev_type_count.items():
             p = query_unigram_train_model(train_model, w)
             sum_p = sum_p + (count * (numpy.log(p)))
     if N == 2:
         dev_pair_count, dev_len_pair, dev_type_count, dev_token_len = prepare_bigram_input(dev_dataset, 0)
-        M = len(dev_pair_count)
+        M = dev_len_pair
         for pair, count in dev_pair_count.items():
             p = query_bigram_train_model(train_model, pair)
             sum_p = sum_p + (count * (numpy.log(p)))

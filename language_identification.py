@@ -40,9 +40,9 @@ def main():
 
         ll_p_sentence_l[lang_name] = log_p_sentence + numpy.log(p_l)
 
-    print(ll_p_sentence_l)
+    print("Evaluation for : ", sentence)
+    print("Evaluation per language ", ll_p_sentence_l)
     predicted = list(dict(sorted(ll_p_sentence_l.items(), key=operator.itemgetter(1), reverse=True)).keys())
-    print(predicted)
     actual = sys.argv[3].strip('[]').split(',')
     print("Predicted", predicted)
     print("Actual", actual)
